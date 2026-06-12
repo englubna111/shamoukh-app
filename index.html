@@ -225,8 +225,18 @@ window.onFbPendingUpdate = function(fbPending){
 };
 
 // ---------- nav ----------
+let excelUnlocked = false; // قسم رفع الإكسل مقفل حتى يدخل مدير المشروع الباسوورد
 document.querySelectorAll('.navbtn').forEach(b=>{
   b.onclick=()=>{
+    // بوابة: رفع ملف الإكسل لمدير المشروع فقط
+    if(b.dataset.sec === 'excel' && !excelUnlocked){
+      const pass = prompt('🔒 رفع ملف الإكسل متاح لمدير المشروع فقط.\nأدخل كلمة مرور مدير المشروع:');
+      if(pass !== STAGE_PASSWORDS[1]){
+        if(pass !== null) alert('❌ كلمة المرور غير صحيحة');
+        return;
+      }
+      excelUnlocked = true;
+    }
     document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
@@ -883,54 +893,54 @@ function exportToDrive(reqId){
 
   const fileName = `شموخ_${d.requestNo}_${d.customerName}.txt`;
 
-  // رفع مباشر على Google Drive عبر OAuth
+  // رفع مباشر على Google Drive عبر Google Identity Services (GIS)
+  // ⚠️ غيّر CLIENT_ID إلى الـ OAuth Client ID المُنشأ بحساب شركة shomkhgp.com
   const CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr93ho849e6.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
-  // تحميل Google API
-  if(!window.gapi){
+  // تحميل مكتبة Google الجديدة عند الحاجة
+  if(!(window.google && google.accounts && google.accounts.oauth2)){
     const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = ()=>{
-      gapi.load('auth2', ()=>{
-        gapi.auth2.init({client_id: CLIENT_ID}).then(()=>{
-          doUpload(content, fileName);
-        });
-      });
-    };
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.onload = ()=> requestDriveToken(CLIENT_ID, SCOPE, content, fileName);
     document.head.appendChild(script);
   } else {
-    doUpload(content, fileName);
+    requestDriveToken(CLIENT_ID, SCOPE, content, fileName);
   }
 }
 
-function doUpload(content, fileName){
-  const authInstance = gapi.auth2.getAuthInstance();
-  const signIn = authInstance.isSignedIn.get() 
-    ? Promise.resolve() 
-    : authInstance.signIn({hosted_domain: 'shomkhgp.com'});
+function requestDriveToken(clientId, scope, content, fileName){
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: scope,
+    hd: 'shomkhgp.com', // تلميح لاستخدام حساب نطاق الشركة
+    callback: (resp)=>{
+      if(resp.error){ alert('تعذّر تسجيل الدخول: ' + resp.error); return; }
+      uploadToDrive(resp.access_token, content, fileName);
+    }
+  });
+  tokenClient.requestAccessToken();
+}
 
-  signIn.then(()=>{
-    const token = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
-    const blob = new Blob([content], {type:'text/plain'});
-    const metadata = {name: fileName, mimeType: 'text/plain'};
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
-    form.append('file', blob);
+function uploadToDrive(token, content, fileName){
+  const blob = new Blob([content], {type:'text/plain'});
+  const metadata = {name: fileName, mimeType: 'text/plain'};
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', blob);
 
-    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {'Authorization': 'Bearer ' + token},
-      body: form
-    }).then(r=>r.json()).then(data=>{
-      if(data.id){
-        alert('✅ تم رفع الملف على Google Drive بنجاح!\nاسم الملف: ' + fileName);
-      } else {
-        alert('حدث خطأ: ' + JSON.stringify(data));
-      }
-    });
+  fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: {'Authorization': 'Bearer ' + token},
+    body: form
+  }).then(r=>r.json()).then(data=>{
+    if(data.id){
+      alert('✅ تم رفع الملف على Google Drive بنجاح!\nاسم الملف: ' + fileName);
+    } else {
+      alert('حدث خطأ: ' + JSON.stringify(data));
+    }
   }).catch(err=>{
-    alert('تعذّر تسجيل الدخول: ' + err.error);
+    alert('خطأ في الرفع: ' + err);
   });
 }
 
