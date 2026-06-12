@@ -50,8 +50,10 @@
   // مسح كل المعاملات (تجريبية) من قاعدة البيانات
   window.fbResetAll = async function(){
     const snap = await getDocs(collection(db,'requests'));
-    for(const d of snap.docs){ await deleteDoc(doc(db,'requests', d.id)); }
+    let n = 0;
+    for(const d of snap.docs){ await deleteDoc(doc(db,'requests', d.id)); n++; }
     await setDoc(doc(db,'meta','pendingRows'), {rows: '[]'});
+    return n;
   };
 
   // Listen for real-time updates
@@ -294,14 +296,29 @@ async function resetAllRequests(){
   if(pass === null) return;
   if(pass !== 'PM@1234'){ alert('❌ كلمة المرور غير صحيحة'); return; }
   if(!confirm('⚠️ متأكد؟ سيتم حذف جميع المعاملات من كل الأجهزة ولا يمكن التراجع.')) return;
+
+  if(typeof window.fbResetAll !== 'function'){
+    alert('❌ لم يكتمل الاتصال بقاعدة البيانات. أعد تحميل الصفحة وحاول مرة أخرى.');
+    return;
+  }
+  const btn = event && event.target ? event.target : null;
+  const oldTxt = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ جاري المسح...'; }
   try{
-    await window.fbResetAll();
+    const n = await window.fbResetAll();
     requests = []; pendingRows = [];
     window._fbRequests = []; window._fbPending = [];
     renderBoard(); renderExcelTable();
-    alert('✅ تم مسح كل المعاملات. التطبيق الآن فاضي وجاهز للبدء.');
+    alert('✅ تم مسح '+n+' معاملة. التطبيق الآن فاضي وجاهز للبدء.');
   }catch(e){
-    alert('❌ صار خطأ أثناء المسح: ' + e.message);
+    const msg = (e && (e.code||e.message)) || e;
+    if(String(msg).includes('permission')){
+      alert('❌ قاعدة البيانات تمنع الحذف.\nلازم تعدّل قواعد Firestore للسماح بالحذف. خبّرني أعطيك القاعدة الصحيحة.');
+    } else {
+      alert('❌ صار خطأ أثناء المسح: ' + msg);
+    }
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = oldTxt; }
   }
 }
 
@@ -310,17 +327,50 @@ async function resetAllRequests(){
 document.getElementById('excelInput').addEventListener('change', function(e){
   const file = e.target.files[0];
   if(!file) return;
+  // تحقق من نوع الملف: لازم إكسل فقط
+  const name = (file.name||'').toLowerCase();
+  if(!(name.endsWith('.xlsx') || name.endsWith('.xls'))){
+    alert('❌ الملف المرفوع ليس ملف إكسل.\nالمسموح فقط: .xlsx أو .xls\nتأكد إنك تختار ملف المياه الوطنية وليس صورة.');
+    e.target.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = function(evt){
-    const data = new Uint8Array(evt.target.result);
-    const wb = XLSX.read(data, {type:'array'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-    // skip header row
+    let rows;
+    try{
+      const data = new Uint8Array(evt.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    }catch(err){
+      alert('❌ تعذّر قراءة الملف كإكسل. تأكد إن الملف سليم وأنه ملف إكسل فعلاً.');
+      e.target.value = '';
+      return;
+    }
+    // كشف الملفات الخربانة (صورة/ملف تالف): محتوى غير صالح
+    const looksCorrupt = (s)=>{
+      s = String(s);
+      if(s.indexOf('\uFFFD') !== -1) return true; // رمز محرف تالف
+      let bad = 0;
+      for(const ch of s){ const c = ch.charCodeAt(0); if(c < 32 && c !== 9 && c !== 10 && c !== 13) bad++; }
+      return bad > 0;
+    };
+    let corruptCount = 0, validCount = 0;
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i]; if(!r || !r[1]) continue;
+      if(looksCorrupt(r[1]) || looksCorrupt(r[3])) corruptCount++; else validCount++;
+    }
+    if(validCount === 0 || corruptCount > validCount){
+      alert('❌ محتوى الملف غير صالح (يبدو أنه صورة أو ملف تالف).\nلم يتم استيراد أي بيانات. ارفع ملف الإكسل الصحيح.');
+      e.target.value = '';
+      return;
+    }
+    // بناء الصفوف (مع تجاهل الصفوف الخربانة إن وُجدت)
     pendingRows = [];
     for(let i=1;i<rows.length;i++){
       const r = rows[i];
       if(!r || !r[1]) continue;
+      if(looksCorrupt(r[1]) || looksCorrupt(r[3])) continue;
       pendingRows.push({
         accountNo: r[0]||'', requestNo: r[1]||'', hesrNo: r[2]||'', ccb: r[4]||'',
         customerName: r[3]||'', region: r[5]||'', plotNo: r[6]||'', date: r[7]||'',
@@ -328,6 +378,7 @@ document.getElementById('excelInput').addEventListener('change', function(e){
         selected:true
       });
     }
+    e.target.value = '';
     savePending();
     renderExcelTable();
   };
@@ -341,7 +392,7 @@ function renderExcelTable(){
     <div>عدد الطلبات: ${pendingRows.length} — حدد الطلبات المعتمدة ثم رحّلها إلى المساحة</div>
     <button class="btn green" onclick="sendSelected()">ترحيل المحدد إلى المساحة ➜</button>
   </div>
-  <table><tr><th><input type="checkbox" id="selAll" checked onchange="toggleAll(this)"></th>
+  <table><tr><th><input type="checkbox" id="selAll" ${pendingRows.every(r=>r.selected)?'checked':''} onchange="toggleAll(this)"></th>
   <th>اسم العميل</th><th>رقم الطلب</th><th>نوع الخدمة</th><th>المنطقة</th><th>قطر العداد</th><th>التاريخ</th></tr>`;
   pendingRows.forEach((r,i)=>{
     html += `<tr><td><input type="checkbox" ${r.selected?'checked':''} onchange="pendingRows[${i}].selected=this.checked"></td>
