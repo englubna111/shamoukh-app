@@ -186,13 +186,14 @@ const STAGES = {
   2:{name:'المساحة', color:'#3b9eff'},
   3:{name:'المكتب الفني - مراجعة أولى', color:'#f39c12'},
   4:{name:'المكتب الفني - تصاريح بلدي', color:'#f39c12'},
-  5:{name:'الأمن والسلامة', color:'#9b59b6'},
-  6:{name:'مهندس الموقع - التنفيذ', color:'#2ecc71'},
-  7:{name:'المكتب الفني - مراجعة نهائية', color:'#f39c12'},
-  8:{name:'منصة بلدي - إخلاء', color:'#3b9eff'},
-  9:{name:'مغلق ✅ (إغلاق مالي)', color:'#1abc9c'}
+  5:{name:'تصاريح صادرة', color:'#e67e22'},
+  6:{name:'الأمن والسلامة', color:'#9b59b6'},
+  7:{name:'مهندس الموقع - التنفيذ', color:'#2ecc71'},
+  8:{name:'المكتب الفني - مراجعة نهائية', color:'#f39c12'},
+  9:{name:'منصة بلدي - إخلاء', color:'#3b9eff'},
+  10:{name:'مغلق ✅ (إغلاق مالي)', color:'#1abc9c'}
 };
-const TEAMS = ['فرقة الحفر','فرقة السباكة','فرقة الدفان','فرقة MC1 (الأسمنت)','فرقة الأسفلت','فرقة الأرصفة'];
+const TEAMS = ['فرقة الحفر','فرقة السباكة','فرقة WFM','فرقة الدفان','فرقة MC1 (الأسمنت)','فرقة الأسفلت','فرقة الأرصفة'];
 
 let requests = [];
 let pendingRows = [];
@@ -415,8 +416,12 @@ function currentReq(){ return requests.find(r=>r.id===openId); }
 
 function openCard(id){
   openId = id;
-  renderModal();
-  document.getElementById('overlay').classList.add('active');
+  const req = requests.find(r=>r.id===id);
+  if(!req) return;
+  checkStageAuth(req.stage, ()=>{
+    renderModal();
+    document.getElementById('overlay').classList.add('active');
+  });
 }
 
 function renderModal(){
@@ -440,6 +445,17 @@ function renderModal(){
 
   body += stageForm(req);
 
+  // أزرار الحذف والأرشفة
+  if(req.stage === 10){
+    body += `<div class="actions" style="margin-top:8px;">
+      <button class="btn gray" onclick="archiveRequest('${req.id}')" style="background:#566075;">📦 أرشفة المعاملة</button>
+    </div>`;
+  } else {
+    body += `<div class="actions" style="margin-top:8px;">
+      <button class="btn red" onclick="deleteRequest('${req.id}')" style="background:#c0392b;font-size:12px;">🗑️ حذف المعاملة (مدير المشروع)</button>
+    </div>`;
+  }
+
   body += `<div class="history"><b>سجل الحركة:</b>`;
   req.history.slice().reverse().forEach(h=>{
     body += `<div>• ${h.text} <span style="opacity:.6">(${fmtTs(h.ts)})</span></div>`;
@@ -452,13 +468,13 @@ function renderModal(){
   const sd = req.stageData;
   if(req.stage===2) renderPhotos('s2', (sd.s2&&sd.s2.photos)||[]);
   if(req.stage===4) renderPhotos('s4', (sd.s4&&sd.s4.photos)||[]);
-  if(req.stage===8 || req.stage===9) renderPhotos('s8', (sd.s8&&sd.s8.photos)||[]);
+  if(req.stage===9 || req.stage===10) renderPhotos('s8', (sd.s8&&sd.s8.photos)||[]);
   if(req.stage===5) Object.keys(sd.s5&&sd.s5.items||{}).forEach(k=>renderPhotos('safety_'+k,(sd.s5.items[k]&&sd.s5.items[k].photos)||[]));
-  if(req.stage===6 && req.rework){
+  if(req.stage===7 && req.rework){
     const k = req.rework.team;
     renderPhotos('team_'+k,(sd.s6&&sd.s6.teams&&sd.s6.teams[k]&&sd.s6.teams[k].photos)||[]);
     if(k==='فرقة الدفان') ['l1','l2','l3'].forEach(lk=>renderPhotos('dafanLayer_'+lk,(sd.s6&&sd.s6.dafanLayers&&sd.s6.dafanLayers[lk])||[]));
-  } else if(req.stage===6){
+  } else if(req.stage===7){
     TEAMS.forEach(k=>renderPhotos('team_'+k,(sd.s6&&sd.s6.teams&&sd.s6.teams[k]&&sd.s6.teams[k].photos)||[]));
     ['l1','l2','l3'].forEach(lk=>renderPhotos('dafanLayer_'+lk,(sd.s6&&sd.s6.dafanLayers&&sd.s6.dafanLayers[lk])||[]));
   }
@@ -479,11 +495,12 @@ function stageForm(req){
           <option value="2">2 - المساحة</option>
           <option value="3">3 - المكتب الفني (مراجعة أولى)</option>
           <option value="4">4 - المكتب الفني (تصاريح بلدي)</option>
-          <option value="5">5 - الأمن والسلامة</option>
-          <option value="6">6 - مهندس الموقع</option>
-          <option value="7">7 - المكتب الفني (مراجعة نهائية)</option>
-          <option value="8">8 - منصة بلدي (إخلاء)</option>
-          <option value="9">9 - إغلاق مالي</option>
+          <option value="5">5 - تصاريح صادرة</option>
+          <option value="6">6 - الأمن والسلامة</option>
+          <option value="7">7 - مهندس الموقع</option>
+          <option value="8">8 - المكتب الفني (مراجعة نهائية)</option>
+          <option value="9">9 - منصة بلدي (إخلاء)</option>
+          <option value="10">10 - إغلاق مالي</option>
         </select></div>
         <div class="field"><label>ملاحظة التحويل</label>
         <textarea id="pmNote" placeholder="اكتب سبب التحويل..."></textarea></div>
@@ -530,7 +547,28 @@ function stageForm(req){
         </div>`;
     }
 
-    case 5: { // safety checklist
+    case 5: { // تصاريح صادرة - مراجعة وتأكيد
+      const s4d = sd.s4||{};
+      const s3d = sd.s3||{};
+      const s2d = sd.s2||{};
+      let prevInfo = '';
+      if(s2d.measure) prevInfo += `<div class="info-row"><b>قياسات المساحة:</b> ${s2d.measure}</div>`;
+      if(s2d.notes) prevInfo += `<div class="info-row"><b>ملاحظات المساحة:</b> ${s2d.notes}</div>`;
+      if(s4d.notes) prevInfo += `<div class="info-row"><b>رقم/ملاحظات التصريح:</b> ${s4d.notes}</div>`;
+      if(s4d.link) prevInfo += `<div class="info-row"><b>رابط الموقع:</b> <a href="${s4d.link}" target="_blank" style="color:var(--accent)">🗺️ فتح الخريطة</a></div>`;
+      if(s4d.photos && s4d.photos.length) prevInfo += `<div class="info-row"><b>صور التصريح:</b></div>${imgs(s4d.photos)}`;
+      if(s3d.notes) prevInfo += `<div class="info-row"><b>ملاحظات المكتب الفني:</b> ${s3d.notes}</div>`;
+      return `<div class="prev-box"><h4>📋 ملخص المراحل السابقة</h4>${prevInfo || '<div class="info-row">لا توجد بيانات</div>'}</div>
+        <div class="field" style="background:var(--panel2);padding:12px;border-radius:8px;color:var(--green);font-size:14px;text-align:center;">
+          ✅ تم إصدار التصاريح — راجع المعلومات أعلاه وأكد الإرسال للأمن والسلامة
+        </div>
+        <div class="actions">
+          <button class="btn green" onclick="transition(6,'تم مراجعة التصاريح الصادرة والتأكيد - الانتقال للأمن والسلامة')">✅ تأكيد وإرسال للأمن والسلامة ➜</button>
+          <button class="btn red" onclick="returnTo1('مشكلة في التصاريح الصادرة')">⚠️ مشكلة - إعادة لمدير المشروع</button>
+        </div>`;
+    }
+
+    case 6: { // safety checklist
       sd.s5 = sd.s5||{items:{}};
       const items = ['السيفتي','الشبك','التصاريح','اللوحات الإرشادية','لوحات المشروع','الإضاءة'];
       let html = '';
@@ -546,12 +584,12 @@ function stageForm(req){
       html += `<div class="field"><label>ملاحظات عامة</label>
         <textarea oninput="sdSet('s5','notes',this.value)">${sd.s5.notes||''}</textarea></div>`;
       html += `<div class="actions">
-        <button class="btn green" onclick="goStage5()">✅ اكتمال التجهيز - مهندس الموقع ➜</button>
+        <button class="btn green" onclick="goStage6()">✅ اكتمال التجهيز - مهندس الموقع ➜</button>
       </div>`;
       return html;
     }
 
-    case 6: { // execution teams
+    case 7: { // execution teams
       sd.s6 = sd.s6||{teams:{}};
       let html = '';
       const teamsToShow = req.rework ? [req.rework.team] : TEAMS;
@@ -591,28 +629,33 @@ function stageForm(req){
       return html;
     }
 
-    case 7: { // tech office final review -> consultant
+    case 8: { // tech office final review -> consultant
       return `<div class="field"><label>ملاحظات المراجعة النهائية / الاستشاري</label>
         <textarea oninput="sdSet('s7','notes',this.value)">${(sd.s7&&sd.s7.notes)||''}</textarea></div>
         <div class="actions">
           <button class="btn red" onclick="openReworkPicker(7)">❌ رفض الاستشاري - إحالة لمهندس الموقع لمعالجة الخطأ</button>
-          <button class="btn green" onclick="goStage(8,'موافقة استشاري المياه الوطنية - صدرت موافقة الإخلاء - إرسال لمنصة بلدي', currentReq().stageData.s7&&currentReq().stageData.s7.notes, null)">✅ موافقة الاستشاري (إخلاء) - بلدي ➜</button>
+          <button class="btn green" onclick="goStage(9,'موافقة استشاري المياه الوطنية - صدرت موافقة الإخلاء - إرسال لمنصة بلدي', currentReq().stageData.s7&&currentReq().stageData.s7.notes, null)">✅ موافقة الاستشاري (إخلاء) - بلدي ➜</button>
         </div>`;
     }
 
-    case 8: { // baladi evacuation
+    case 9: { // baladi evacuation
       return `<div class="field"><label>ملاحظات منصة بلدي (الإخلاء)</label>
         <textarea oninput="sdSet('s8','notes',this.value)">${(sd.s8&&sd.s8.notes)||''}</textarea></div>
         <div class="field"><label>الفاتورة (صورة أو PDF)</label>${photoUploadHTML('s8')}</div>
         <div class="actions">
           <button class="btn red" onclick="openReworkPicker(8)">❌ رفض بلدي - إحالة لمهندس الموقع لمعالجة الخطأ</button>
-          <button class="btn green" onclick="goStage(9,'اعتماد منصة بلدي للإخلاء - تم إرسال إغلاق مالي/فاتورة للمالية', currentReq().stageData.s8&&currentReq().stageData.s8.notes, currentReq().stageData.s8&&currentReq().stageData.s8.photos)">✅ اعتماد بلدي - إغلاق مالي ➜ (إنهاء)</button>
+          <button class="btn green" onclick="goStage(10,'اعتماد منصة بلدي للإخلاء - تم إرسال إغلاق مالي/فاتورة للمالية', currentReq().stageData.s8&&currentReq().stageData.s8.notes, currentReq().stageData.s8&&currentReq().stageData.s8.photos)">✅ اعتماد بلدي - إغلاق مالي ➜ (إنهاء)</button>
         </div>`;
     }
 
-    case 9: {
+    case 10: {
       return `<div class="field" style="text-align:center;color:var(--green);font-size:15px;">✅ تم إغلاق الطلب وإرسال الفاتورة للمالية - اكتملت جميع المراحل.</div>
-        <div class="field"><label>الفاتورة المرفوعة</label>${photoUploadHTML('s8')}</div>`;
+        <div class="field"><label>الفاتورة المرفوعة</label>${photoUploadHTML('s8')}</div>
+        <div class="actions" style="justify-content:center;">
+          <button class="btn green" onclick="exportToDrive('${req.id}')" style="font-size:15px;padding:12px 24px;">
+            📁 تصدير ملف PDF وحفظه على Google Drive
+          </button>
+        </div>`;
     }
   }
   return '';
@@ -649,7 +692,7 @@ function prevSummary(req){
       if(sd.s3 && sd.s3.notes) html += box('ملاحظات المكتب الفني - مراجعة أولى (المرحلة 3)', `<div class="info-row">${sd.s3.notes}</div>`);
       break;
     }
-    case 5: {
+    case 6: {
       if(sd.s4 && (sd.s4.notes || sd.s4.link)){
         html += box('بيانات تصريح بلدي (المرحلة 4)',
           (sd.s4.notes?`<div class="info-row">${sd.s4.notes}</div>`:'')+
@@ -657,7 +700,7 @@ function prevSummary(req){
       }
       break;
     }
-    case 6: {
+    case 7: {
       if(sd.s5 && sd.s5.items){
         let inner = '';
         Object.keys(sd.s5.items).forEach(k=>{
@@ -669,7 +712,7 @@ function prevSummary(req){
       }
       break;
     }
-    case 7: {
+    case 8: {
       if(sd.s6 && sd.s6.teams){
         let inner = '';
         Object.keys(sd.s6.teams).forEach(k=>{
@@ -690,11 +733,11 @@ function prevSummary(req){
       }
       break;
     }
-    case 8: {
+    case 9: {
       if(sd.s7 && sd.s7.notes) html += box('ملاحظات المراجعة النهائية (المرحلة 7)', `<div class="info-row">${sd.s7.notes}</div>`);
       break;
     }
-    case 9: {
+    case 10: {
       if(sd.s8 && sd.s8.notes) html += box('ملاحظات منصة بلدي - الإخلاء (المرحلة 8)', `<div class="info-row">${sd.s8.notes}</div>`);
       break;
     }
@@ -718,7 +761,7 @@ function confirmExec(){
       alert('لا يمكن إكمال الطلب — يجب لكل فرقة: كتابة "تم" في الملاحظات + رفع صورة، الفرق الناقصة:\n- '+missing.join('\n- '));
       return;
     }
-    transition(7,'استلم مهندس الموقع صور وملاحظات جميع الفرق وقيّم الحالة: نُفّذت - إرسال للمكتب الفني (مراجعة نهائية)');
+    transition(8,'استلم مهندس الموقع صور وملاحظات جميع الفرق وقيّم الحالة: نُفّذت - إرسال للمكتب الفني (مراجعة نهائية)');
   } else {
     addHistory(r, `تحديث الحالة: ${status} - البطاقة معلّقة عند مهندس الموقع`);
     saveRequests(); renderModal(); renderBoard();
@@ -726,7 +769,7 @@ function confirmExec(){
 }
 
 // ---------- transitions ----------
-function goStage5(){
+function goStage6(){
   const r = currentReq();
   const sd = r.stageData;
   const items = ['السيفتي','الشبك','التصاريح','اللوحات الإرشادية','لوحات المشروع','الإضاءة'];
@@ -738,7 +781,7 @@ function goStage5(){
   });
   if(!sd.s5 || !sd.s5.notes || !sd.s5.notes.includes('تم')) errs.push('كتابة كلمة "تم" في الملاحظات العامة');
   if(errs.length){ alert('لا يمكن نقل المعاملة - يجب أولاً:\n- '+errs.join('\n- ')); return; }
-  transition(6,'اكتمل تجهيز الموقع من الأمن والسلامة - الانتقال لمهندس الموقع');
+  transition(7,'اكتمل تجهيز الموقع من الأمن والسلامة - الانتقال لمهندس الموقع');
 }
 function goStage(target, note, notesVal, photosArr){
   const errs=[];
@@ -806,6 +849,147 @@ function pmSendTo(){
   const target = parseInt(document.getElementById('pmTargetStage').value);
   const note = document.getElementById('pmNote').value || 'تحويل من مدير المشروع';
   transition(target, 'مدير المشروع حوّل الطلب مباشرة إلى المرحلة ' + target + ': ' + note);
+}
+
+
+// Google Drive Upload با OAuth
+function exportToDrive(reqId){
+  const req = requests.find(r=>r.id===reqId);
+  if(!req){ alert('لم يتم العثور على المعاملة'); return; }
+  const d = req.data;
+  const sd = req.stageData;
+
+  // بناء محتوى التقرير
+  let content = `تقرير معاملة - شركة شموخ للاستدامة\n`;
+  content += `=====================================\n`;
+  content += `رقم الطلب: ${d.requestNo}\n`;
+  content += `اسم العميل (CCB): ${d.customerName}\n`;
+  content += `رقم الحساب: ${d.accountNo}\n`;
+  content += `المنطقة: ${d.region}\n`;
+  content += `نوع الخدمة: ${d.desc}\n`;
+  content += `قطر العداد: ${d.meterSize}\n`;
+  content += `الإحداثيات: ${d.lat}, ${d.lng}\n`;
+  content += `=====================================\n`;
+  content += `سجل الحركة:\n`;
+  req.history.forEach(h=>{
+    const dt = new Date(h.ts).toLocaleString('ar-SA');
+    content += `• ${h.text} (${dt})\n`;
+  });
+  content += `\n=====================================\n`;
+  if(sd.s2){ content += `المساحة:\nالقياسات: ${sd.s2.measure||''}\nالملاحظات: ${sd.s2.notes||''}\n`; }
+  if(sd.s4){ content += `\nتصريح بلدي:\n${sd.s4.notes||''}\nرابط الموقع: ${sd.s4.link||''}\n`; }
+  if(sd.s5 && sd.s5.notes){ content += `\nالأمن والسلامة:\n${sd.s5.notes}\n`; }
+  if(sd.s8 && sd.s8.notes){ content += `\nبلدي (إخلاء):\n${sd.s8.notes}\n`; }
+
+  const fileName = `شموخ_${d.requestNo}_${d.customerName}.txt`;
+
+  // رفع مباشر على Google Drive عبر OAuth
+  const CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr93ho849e6.apps.googleusercontent.com';
+  const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+  // تحميل Google API
+  if(!window.gapi){
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = ()=>{
+      gapi.load('auth2', ()=>{
+        gapi.auth2.init({client_id: CLIENT_ID}).then(()=>{
+          doUpload(content, fileName);
+        });
+      });
+    };
+    document.head.appendChild(script);
+  } else {
+    doUpload(content, fileName);
+  }
+}
+
+function doUpload(content, fileName){
+  const authInstance = gapi.auth2.getAuthInstance();
+  const signIn = authInstance.isSignedIn.get() 
+    ? Promise.resolve() 
+    : authInstance.signIn({hosted_domain: 'shomkhgp.com'});
+
+  signIn.then(()=>{
+    const token = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
+    const blob = new Blob([content], {type:'text/plain'});
+    const metadata = {name: fileName, mimeType: 'text/plain'};
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+    form.append('file', blob);
+
+    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {'Authorization': 'Bearer ' + token},
+      body: form
+    }).then(r=>r.json()).then(data=>{
+      if(data.id){
+        alert('✅ تم رفع الملف على Google Drive بنجاح!\nاسم الملف: ' + fileName);
+      } else {
+        alert('حدث خطأ: ' + JSON.stringify(data));
+      }
+    });
+  }).catch(err=>{
+    alert('تعذّر تسجيل الدخول: ' + err.error);
+  });
+}
+
+
+// ===== نظام الصلاحيات =====
+const STAGE_PASSWORDS = {
+  1: 'PM@1234',
+  2: 'Survey@2',
+  3: 'Tech@3',
+  4: 'Permit@4',
+  5: 'Issued@5',
+  6: 'Safety@6',
+  7: 'Site@7',
+  8: 'Final@8',
+  9: 'Baladi@9',
+  10: 'Finance@10'
+};
+const DELETE_PASSWORD = 'Delete@PM';
+const ARCHIVE_PASSWORD = 'Archive@10';
+
+let currentAuth = null; // المرحلة المصادق عليها حالياً
+
+function checkStageAuth(stage, callback){
+  if(currentAuth === stage){ callback(); return; }
+  const pass = prompt(`🔐 أدخل كلمة مرور المرحلة ${stage}:`);
+  if(!pass) return;
+  if(pass === STAGE_PASSWORDS[stage]){
+    currentAuth = stage;
+    callback();
+  } else {
+    alert('❌ كلمة المرور غير صحيحة');
+  }
+}
+
+function deleteRequest(reqId){
+  const pass = prompt('🔐 أدخل كلمة مرور الحذف (مدير المشروع فقط):');
+  if(!pass) return;
+  if(pass !== DELETE_PASSWORD){ alert('❌ كلمة المرور غير صحيحة'); return; }
+  if(!confirm('هل أنت متأكد من حذف هذه المعاملة نهائياً؟')) return;
+  requests = requests.filter(r=>r.id !== reqId);
+  saveRequests();
+  closeModal();
+  renderBoard();
+  alert('✅ تم حذف المعاملة');
+}
+
+function archiveRequest(reqId){
+  const pass = prompt('🔐 أدخل كلمة مرور الأرشفة:');
+  if(!pass) return;
+  if(pass !== ARCHIVE_PASSWORD){ alert('❌ كلمة المرور غير صحيحة'); return; }
+  const req = requests.find(r=>r.id===reqId);
+  if(!req) return;
+  req.archived = true;
+  req.archivedAt = Date.now();
+  addHistory(req, 'تم أرشفة المعاملة');
+  saveRequests();
+  closeModal();
+  renderBoard();
+  alert('✅ تم أرشفة المعاملة');
 }
 
 // ---------- init ----------
