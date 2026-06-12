@@ -474,12 +474,25 @@ function stageForm(req){
       const lastNote = sd.returnNote || '';
       return `<div class="field"><label>سبب الإعادة من المرحلة السابقة</label>
         <div style="background:var(--panel2);padding:8px;border-radius:6px;font-size:13px;">${lastNote || 'طلب جديد من ملف الإكسل'}</div></div>
+        <div class="field"><label>📋 إرسال إلى أي مرحلة (صلاحية مدير المشروع)</label>
+        <select id="pmTargetStage">
+          <option value="2">2 - المساحة</option>
+          <option value="3">3 - المكتب الفني (مراجعة أولى)</option>
+          <option value="4">4 - المكتب الفني (تصاريح بلدي)</option>
+          <option value="5">5 - الأمن والسلامة</option>
+          <option value="6">6 - مهندس الموقع</option>
+          <option value="7">7 - المكتب الفني (مراجعة نهائية)</option>
+          <option value="8">8 - منصة بلدي (إخلاء)</option>
+          <option value="9">9 - إغلاق مالي</option>
+        </select></div>
+        <div class="field"><label>ملاحظة التحويل</label>
+        <textarea id="pmNote" placeholder="اكتب سبب التحويل..."></textarea></div>
         <div class="actions">
-          <button class="btn green" onclick="transition(2,'تمت معالجة الملاحظة - إعادة الطلب إلى المساحة')">إعادة إلى المساحة (2) ➜</button>
+          <button class="btn green" onclick="pmSendTo()">✅ إرسال للمرحلة المحددة ➜</button>
         </div>`;
     }
 
-    case 2: { // Survey
+        case 2: { // Survey
       sd.s2 = sd.s2||{};
       return `<div class="field"><label>القياسات / تفاصيل الرفع المساحي</label>
         <textarea id="f_measure" oninput="sd2('measure',this.value)">${sd.s2.measure||''}</textarea></div>
@@ -786,6 +799,13 @@ function finishRework(){
   r.rework = null;
   r.stage = 7;
   saveRequests(); closeModal(); renderBoard();
+}
+
+
+function pmSendTo(){
+  const target = parseInt(document.getElementById('pmTargetStage').value);
+  const note = document.getElementById('pmNote').value || 'تحويل من مدير المشروع';
+  transition(target, 'مدير المشروع حوّل الطلب مباشرة إلى المرحلة ' + target + ': ' + note);
 }
 
 // ---------- init ----------
