@@ -100,10 +100,10 @@
 
   /* ===== Dashboard ===== */
   .board{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;}
-  .col{min-width:230px;background:var(--panel);border-radius:8px;padding:8px;flex-shrink:0;}
+  .col{min-width:230px;max-width:260px;width:230px;background:var(--panel);border-radius:8px;padding:8px;flex-shrink:0;}
   .col h3{font-size:13px;margin:4px 6px 10px;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:6px;}
   .col h3 span{color:var(--muted);font-weight:normal;}
-  .card{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer;font-size:12px;}
+  .card{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer;font-size:12px;word-break:break-word;overflow:hidden;}
   .card:hover{border-color:var(--accent);}
   .card b{display:block;font-size:13px;margin-bottom:4px;}
   .badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;margin-top:4px;}
@@ -954,10 +954,14 @@ const ARCHIVE_PASSWORD = 'Archive@10';
 let currentAuth = null; // المرحلة المصادق عليها حالياً
 
 function checkStageAuth(stage, callback){
-  if(currentAuth === stage){ callback(); return; }
+  if(currentAuth === stage || currentAuth === 'PM'){ callback(); return; }
   const pass = prompt(`🔐 أدخل كلمة مرور المرحلة ${stage}:`);
   if(!pass) return;
-  if(pass === STAGE_PASSWORDS[stage]){
+  if(pass === STAGE_PASSWORDS[1]){
+    // مدير المشروع - صلاحية كاملة
+    currentAuth = 'PM';
+    callback();
+  } else if(pass === STAGE_PASSWORDS[stage]){
     currentAuth = stage;
     callback();
   } else {
