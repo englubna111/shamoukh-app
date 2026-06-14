@@ -18,7 +18,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, doc, setDoc, onSnapshot, query, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, collection, doc, setDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCswfAOwpDSKvqgu59oh_am8CLqYdFUElM",
@@ -47,30 +47,12 @@
     }catch(e){ console.error('Firebase pending error:', e); }
   };
 
-  // مسح كل المعاملات (تجريبية) من قاعدة البيانات
-  window.fbResetAll = async function(){
-    const snap = await getDocs(collection(db,'requests'));
-    let n = 0;
-    for(const d of snap.docs){ await deleteDoc(doc(db,'requests', d.id)); n++; }
-    await setDoc(doc(db,'meta','pendingRows'), {rows: '[]'});
-    return n;
-  };
-
   // Listen for real-time updates
   const q = query(collection(db,'requests'));
-  let fbFirstLoad = false;
   onSnapshot(q, (snapshot)=>{
-    let tmp = [];
-    snapshot.forEach(d=>{ tmp.push(d.data()); });
-    window._fbRequests = tmp;
-    // أول مرة: سواء فارغة أو لا، نحدث البيانات وننتظر
-    if(!fbFirstLoad){
-      fbFirstLoad = true;
-      // انتظر قليلاً للتأكد من اكتمال التحميل
-      setTimeout(()=>{ if(window.onFbUpdate) window.onFbUpdate(window._fbRequests); }, 500);
-    } else {
-      if(window.onFbUpdate) window.onFbUpdate(window._fbRequests);
-    }
+    window._fbRequests = [];
+    snapshot.forEach(d=>{ window._fbRequests.push(d.data()); });
+    if(window.onFbUpdate) window.onFbUpdate(window._fbRequests);
   });
 
   onSnapshot(doc(db,'meta','pendingRows'), (d)=>{
@@ -96,9 +78,9 @@
   nav{display:flex;gap:8px;}
   nav button{background:var(--panel2);border:1px solid var(--border);color:var(--txt);padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;}
   nav button.active{background:var(--accent);border-color:var(--accent);color:#fff;}
-  main{padding:0;overflow:visible;}
-  .section{display:none;overflow:visible;}
-  .section.active{display:block;overflow:visible;}
+  main{padding:16px;}
+  .section{display:none;}
+  .section.active{display:block;}
 
   /* ===== Excel Section ===== */
   .upload-box{border:2px dashed var(--border);border-radius:10px;padding:30px;text-align:center;margin-bottom:16px;background:var(--panel);}
@@ -117,12 +99,8 @@
   .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 
   /* ===== Dashboard ===== */
-  #dash { overflow-x: auto; overflow-y: visible; }
-  .board{display:flex;flex-direction:row;flex-wrap:nowrap;gap:12px;overflow-x:auto;overflow-y:visible;padding:0 0 16px 0;min-height:320px;width:100%;}
-  .board::-webkit-scrollbar{height:6px;}
-  .board::-webkit-scrollbar-thumb{background:var(--accent);border-radius:3px;}
-  .board-hint{font-size:12px;color:var(--muted);padding:4px 0 8px;}
-  .col{min-width:250px;max-width:250px;width:250px;flex-shrink:0;background:var(--panel);border-radius:8px;padding:8px;flex-shrink:0;}
+  .board{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;}
+  .col{min-width:230px;max-width:260px;width:230px;background:var(--panel);border-radius:8px;padding:8px;flex-shrink:0;}
   .col h3{font-size:13px;margin:4px 6px 10px;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:6px;}
   .col h3 span{color:var(--muted);font-weight:normal;}
   .card{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer;font-size:12px;word-break:break-word;overflow:hidden;}
@@ -174,7 +152,6 @@
   <nav>
     <button class="navbtn active" data-sec="dash">لوحة التتبع</button>
     <button class="navbtn" data-sec="excel">رفع ملف الإكسل</button>
-    <button id="searchBtn" title="بحث عن معاملة بـ CCB NO#" onclick="openSearch()" style="background:var(--panel2);border:1px solid var(--border);color:var(--txt);padding:8px 14px;border-radius:6px;cursor:pointer;font-size:16px;">🔍</button>
   </nav>
 </header>
 
@@ -185,26 +162,14 @@
       <div>📂 ارفع ملف الإكسل المستلم من المياه الوطنية (.xlsx)</div>
       <input type="file" id="excelInput" accept=".xlsx,.xls">
     </div>
-    <div style="margin:14px 0;text-align:left;">
-      <button class="btn red" onclick="resetAllRequests()">🗑️ مسح كل المعاملات والبدء من جديد</button>
-    </div>
     <div id="excelTableWrap"></div>
   </section>
-  <section id="dash" class="section active" style="overflow-x:auto;overflow-y:visible;padding:16px;">
-    <div class="board-hint" style="display:flex;align-items:center;gap:10px;"><span>المراحل العشر (اضغط للتنقل):</span><button onclick="var b=document.getElementById('board');b.scrollLeft=b.scrollLeft-300;console.log('scroll:',b.scrollLeft)" style="background:#3b9eff;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:16px;">◀</button><button onclick="var b=document.getElementById('board');b.scrollLeft=b.scrollLeft+300;console.log('scroll:',b.scrollLeft)" style="background:#3b9eff;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:16px;">▶</button></div>
+
+  <!-- DASHBOARD SECTION -->
+  <section id="dash" class="section active">
     <div id="board" class="board"></div>
   </section>
 </main>
-
-<div class="overlay" id="searchOverlay">
-  <div class="modal" style="max-width:560px;">
-    <button onclick="closeSearch()" style="position:absolute;top:14px;left:16px;background:var(--red);color:#fff;border:none;border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;">×</button>
-    <h2>🔍 بحث عن معاملة</h2>
-    <div class="sub">ابحث برقم العميل CCB NO# (بحث جزئي مسموح)</div>
-    <input type="text" id="ccbSearchInput" placeholder="اكتب رقم CCB..." oninput="runCcbSearch()" autocomplete="off">
-    <div id="ccbSearchResults" style="margin-top:14px;"></div>
-  </div>
-</div>
 
 <div class="overlay" id="overlay">
   <div class="modal" id="modalContent"></div>
@@ -251,11 +216,7 @@ async function savePending(){
 
 // Firebase real-time callbacks
 window.onFbUpdate = function(fbReqs){
-  if(fbReqs && fbReqs.length > 0){
-    requests = fbReqs;
-  } else if(fbReqs) {
-    requests = fbReqs;
-  }
+  requests = fbReqs;
   renderBoard();
 };
 window.onFbPendingUpdate = function(fbPending){
@@ -264,8 +225,18 @@ window.onFbPendingUpdate = function(fbPending){
 };
 
 // ---------- nav ----------
+let excelUnlocked = false; // قسم رفع الإكسل مقفل حتى يدخل مدير المشروع الباسوورد
 document.querySelectorAll('.navbtn').forEach(b=>{
   b.onclick=()=>{
+    // بوابة: رفع ملف الإكسل لمدير المشروع فقط
+    if(b.dataset.sec === 'excel' && !excelUnlocked){
+      const pass = prompt('🔒 رفع ملف الإكسل متاح لمدير المشروع فقط.\nأدخل كلمة مرور مدير المشروع:');
+      if(pass !== STAGE_PASSWORDS[1]){
+        if(pass !== null) alert('❌ كلمة المرور غير صحيحة');
+        return;
+      }
+      excelUnlocked = true;
+    }
     document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
@@ -273,122 +244,21 @@ document.querySelectorAll('.navbtn').forEach(b=>{
   };
 });
 
-// ---------- بحث بـ CCB NO# ----------
-function openSearch(){
-  document.getElementById('searchOverlay').classList.add('active');
-  document.getElementById('ccbSearchInput').value = '';
-  document.getElementById('ccbSearchResults').innerHTML = '';
-  setTimeout(()=>document.getElementById('ccbSearchInput').focus(), 50);
-}
-function closeSearch(){ document.getElementById('searchOverlay').classList.remove('active'); }
-
-function runCcbSearch(){
-  const q = document.getElementById('ccbSearchInput').value.trim().toLowerCase();
-  const box = document.getElementById('ccbSearchResults');
-  if(!q){ box.innerHTML=''; return; }
-  const hits = requests.filter(r=> String(r.data.ccb||'').toLowerCase().includes(q));
-  if(hits.length===0){
-    box.innerHTML = '<div class="empty" style="padding:10px;color:var(--muted);">لا توجد معاملة بهذا الرقم</div>';
-    return;
-  }
-  box.innerHTML = hits.map(r=>{
-    const st = STAGES[r.stage];
-    return `<div class="card" style="cursor:pointer;" onclick="goToCard('${r.id}')">
-      <b>${r.data.customerName||'بدون اسم'}</b>
-      CCB: ${r.data.ccb||'-'} &nbsp;|&nbsp; رقم الطلب: ${r.data.requestNo||'-'}<br>
-      المنطقة: ${r.data.region||'-'}<br>
-      <span class="badge" style="background:${st.color};color:#fff;margin-top:6px;">المرحلة ${r.stage} - ${st.name}</span>
-    </div>`;
-  }).join('');
-}
-
-function goToCard(id){
-  closeSearch();
-  document.querySelector('[data-sec="dash"]').click();
-  openCard(id);
-}
-
-// ---------- مسح كل المعاملات (مدير المشروع فقط) ----------
-async function resetAllRequests(){
-  const pass = prompt('🔐 هذا الإجراء يمسح كل المعاملات نهائياً.\nأدخل كلمة مرور مدير المشروع للتأكيد:');
-  if(pass === null) return;
-  if(pass !== 'PM@1234'){ alert('❌ كلمة المرور غير صحيحة'); return; }
-  if(!confirm('⚠️ متأكد؟ سيتم حذف جميع المعاملات من كل الأجهزة ولا يمكن التراجع.')) return;
-
-  if(typeof window.fbResetAll !== 'function'){
-    alert('❌ لم يكتمل الاتصال بقاعدة البيانات. أعد تحميل الصفحة وحاول مرة أخرى.');
-    return;
-  }
-  const btn = event && event.target ? event.target : null;
-  const oldTxt = btn ? btn.textContent : '';
-  if(btn){ btn.disabled = true; btn.textContent = '⏳ جاري المسح...'; }
-  try{
-    const n = await window.fbResetAll();
-    requests = []; pendingRows = [];
-    window._fbRequests = []; window._fbPending = [];
-    renderBoard(); renderExcelTable();
-    alert('✅ تم مسح '+n+' معاملة. التطبيق الآن فاضي وجاهز للبدء.');
-  }catch(e){
-    const msg = (e && (e.code||e.message)) || e;
-    if(String(msg).includes('permission')){
-      alert('❌ قاعدة البيانات تمنع الحذف.\nلازم تعدّل قواعد Firestore للسماح بالحذف. خبّرني أعطيك القاعدة الصحيحة.');
-    } else {
-      alert('❌ صار خطأ أثناء المسح: ' + msg);
-    }
-  }finally{
-    if(btn){ btn.disabled = false; btn.textContent = oldTxt; }
-  }
-}
-
-
 // ---------- excel ----------
 document.getElementById('excelInput').addEventListener('change', function(e){
   const file = e.target.files[0];
   if(!file) return;
-  // تحقق من نوع الملف: لازم إكسل فقط
-  const name = (file.name||'').toLowerCase();
-  if(!(name.endsWith('.xlsx') || name.endsWith('.xls'))){
-    alert('❌ الملف المرفوع ليس ملف إكسل.\nالمسموح فقط: .xlsx أو .xls\nتأكد إنك تختار ملف المياه الوطنية وليس صورة.');
-    e.target.value = '';
-    return;
-  }
   const reader = new FileReader();
   reader.onload = function(evt){
-    let rows;
-    try{
-      const data = new Uint8Array(evt.target.result);
-      const wb = XLSX.read(data, {type:'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-    }catch(err){
-      alert('❌ تعذّر قراءة الملف كإكسل. تأكد إن الملف سليم وأنه ملف إكسل فعلاً.');
-      e.target.value = '';
-      return;
-    }
-    // كشف الملفات الخربانة (صورة/ملف تالف): محتوى غير صالح
-    const looksCorrupt = (s)=>{
-      s = String(s);
-      if(s.indexOf('\uFFFD') !== -1) return true; // رمز محرف تالف
-      let bad = 0;
-      for(const ch of s){ const c = ch.charCodeAt(0); if(c < 32 && c !== 9 && c !== 10 && c !== 13) bad++; }
-      return bad > 0;
-    };
-    let corruptCount = 0, validCount = 0;
-    for(let i=1;i<rows.length;i++){
-      const r = rows[i]; if(!r || !r[1]) continue;
-      if(looksCorrupt(r[1]) || looksCorrupt(r[3])) corruptCount++; else validCount++;
-    }
-    if(validCount === 0 || corruptCount > validCount){
-      alert('❌ محتوى الملف غير صالح (يبدو أنه صورة أو ملف تالف).\nلم يتم استيراد أي بيانات. ارفع ملف الإكسل الصحيح.');
-      e.target.value = '';
-      return;
-    }
-    // بناء الصفوف (مع تجاهل الصفوف الخربانة إن وُجدت)
+    const data = new Uint8Array(evt.target.result);
+    const wb = XLSX.read(data, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    // skip header row
     pendingRows = [];
     for(let i=1;i<rows.length;i++){
       const r = rows[i];
       if(!r || !r[1]) continue;
-      if(looksCorrupt(r[1]) || looksCorrupt(r[3])) continue;
       pendingRows.push({
         accountNo: r[0]||'', requestNo: r[1]||'', hesrNo: r[2]||'', ccb: r[4]||'',
         customerName: r[3]||'', region: r[5]||'', plotNo: r[6]||'', date: r[7]||'',
@@ -396,7 +266,6 @@ document.getElementById('excelInput').addEventListener('change', function(e){
         selected:true
       });
     }
-    e.target.value = '';
     savePending();
     renderExcelTable();
   };
@@ -410,7 +279,7 @@ function renderExcelTable(){
     <div>عدد الطلبات: ${pendingRows.length} — حدد الطلبات المعتمدة ثم رحّلها إلى المساحة</div>
     <button class="btn green" onclick="sendSelected()">ترحيل المحدد إلى المساحة ➜</button>
   </div>
-  <table><tr><th><input type="checkbox" id="selAll" ${pendingRows.every(r=>r.selected)?'checked':''} onchange="toggleAll(this)"></th>
+  <table><tr><th><input type="checkbox" id="selAll" checked onchange="toggleAll(this)"></th>
   <th>اسم العميل</th><th>رقم الطلب</th><th>نوع الخدمة</th><th>المنطقة</th><th>قطر العداد</th><th>التاريخ</th></tr>`;
   pendingRows.forEach((r,i)=>{
     html += `<tr><td><input type="checkbox" ${r.selected?'checked':''} onchange="pendingRows[${i}].selected=this.checked"></td>
@@ -447,10 +316,8 @@ function sendSelected(){
 // ---------- board ----------
 function renderBoard(){
   const board = document.getElementById('board');
-  if(!board) return;
   board.innerHTML = '';
-  const stageKeys = Object.keys(STAGES);
-  stageKeys.forEach(stageNum=>{
+  Object.keys(STAGES).forEach(stageNum=>{
     stageNum = parseInt(stageNum);
     const items = requests.filter(r=>r.stage===stageNum);
     const col = document.createElement('div');
@@ -1026,54 +893,54 @@ function exportToDrive(reqId){
 
   const fileName = `شموخ_${d.requestNo}_${d.customerName}.txt`;
 
-  // رفع مباشر على Google Drive عبر OAuth
+  // رفع مباشر على Google Drive عبر Google Identity Services (GIS)
+  // ⚠️ غيّر CLIENT_ID إلى الـ OAuth Client ID المُنشأ بحساب شركة shomkhgp.com
   const CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr93ho849e6.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
-  // تحميل Google API
-  if(!window.gapi){
+  // تحميل مكتبة Google الجديدة عند الحاجة
+  if(!(window.google && google.accounts && google.accounts.oauth2)){
     const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = ()=>{
-      gapi.load('auth2', ()=>{
-        gapi.auth2.init({client_id: CLIENT_ID}).then(()=>{
-          doUpload(content, fileName);
-        });
-      });
-    };
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.onload = ()=> requestDriveToken(CLIENT_ID, SCOPE, content, fileName);
     document.head.appendChild(script);
   } else {
-    doUpload(content, fileName);
+    requestDriveToken(CLIENT_ID, SCOPE, content, fileName);
   }
 }
 
-function doUpload(content, fileName){
-  const authInstance = gapi.auth2.getAuthInstance();
-  const signIn = authInstance.isSignedIn.get() 
-    ? Promise.resolve() 
-    : authInstance.signIn({hosted_domain: 'shomkhgp.com'});
+function requestDriveToken(clientId, scope, content, fileName){
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: scope,
+    hd: 'shomkhgp.com', // تلميح لاستخدام حساب نطاق الشركة
+    callback: (resp)=>{
+      if(resp.error){ alert('تعذّر تسجيل الدخول: ' + resp.error); return; }
+      uploadToDrive(resp.access_token, content, fileName);
+    }
+  });
+  tokenClient.requestAccessToken();
+}
 
-  signIn.then(()=>{
-    const token = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
-    const blob = new Blob([content], {type:'text/plain'});
-    const metadata = {name: fileName, mimeType: 'text/plain'};
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
-    form.append('file', blob);
+function uploadToDrive(token, content, fileName){
+  const blob = new Blob([content], {type:'text/plain'});
+  const metadata = {name: fileName, mimeType: 'text/plain'};
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', blob);
 
-    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {'Authorization': 'Bearer ' + token},
-      body: form
-    }).then(r=>r.json()).then(data=>{
-      if(data.id){
-        alert('✅ تم رفع الملف على Google Drive بنجاح!\nاسم الملف: ' + fileName);
-      } else {
-        alert('حدث خطأ: ' + JSON.stringify(data));
-      }
-    });
+  fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: {'Authorization': 'Bearer ' + token},
+    body: form
+  }).then(r=>r.json()).then(data=>{
+    if(data.id){
+      alert('✅ تم رفع الملف على Google Drive بنجاح!\nاسم الملف: ' + fileName);
+    } else {
+      alert('حدث خطأ: ' + JSON.stringify(data));
+    }
   }).catch(err=>{
-    alert('تعذّر تسجيل الدخول: ' + err.error);
+    alert('خطأ في الرفع: ' + err);
   });
 }
 
@@ -1140,9 +1007,6 @@ function archiveRequest(reqId){
 }
 
 // ---------- init ----------
-// أعرض الأعمدة فوراً (حتى لو فارغة) لضمان ظهور الـ board
-renderBoard();
-
 (async function(){
   // انتظر Firebase
   let tries = 0;
@@ -1154,4 +1018,3 @@ renderBoard();
 </script>
 </body>
 </html>
-<!-- fix scroll -->
